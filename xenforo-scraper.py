@@ -3,8 +3,6 @@ import os
 import sys
 import requests
 from urllib.parse import urlparse
-#from urllib3.exceptions import MaxRetryError, NewConnectionError
-from socket import gaierror
 from bs4 import BeautifulSoup
 
 
@@ -22,13 +20,13 @@ cookies = {'cookie': args.cookie}
 headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
 
+
 # Requests the URL and returns a BeautifulSoup object.
 def requestsite(url):
     try:
-        #print("Requesting url:", url)
         response = requests.get(url, cookies=cookies, headers=headers, timeout=10)
     except TimeoutError:
-        print("TIMEDOUT ERORR!!!!!!!!!!!!!!!!!!!!!")
+        print("Timed out Error.")
         pass
     except Exception as e:
         print("Error on {0}".format(url))
@@ -102,6 +100,7 @@ def getoutputpath(title):
         entrypath.append(title)
     return entrypath
 
+
 # Scrapes a single page, creating a folder and placing images into it.
 def scrapepage(url):
     # print("Starting scrape on {0}".format(url))
@@ -162,7 +161,7 @@ def scrapepage(url):
         try:
             file = requests.get(i, cookies=cookies, headers=headers, timeout=10)
         except TimeoutError:
-            print("TIMEDOUT ERORR!!!!!!!!!!!!!!!!!!!!!")
+            print("Timed out Error.")
             pass
         except Exception as e:
             print("Error on {0}".format(i))
