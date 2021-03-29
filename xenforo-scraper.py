@@ -173,7 +173,7 @@ def scrapepage(url):
             i = i[:-1]
         filename = i[i.rfind('/')+1:len(i)]
 
-        if isignored(filename):
+        if args.ignored is not None and isignored(filename):
             continue
 
         truncated = (filename[:70] + '..') if len(filename) > 70 else filename
