@@ -12,7 +12,8 @@ parser.add_argument('-o', '--output', help="Optional download output location, m
 parser.add_argument('-nd', '--no-directories', help="Do not create directories for threads.", action="store_true")
 parser.add_argument('-e', '--external', help="Follow external files from links", action="store_true")
 parser.add_argument('-i', '--ignored', help="Ignore files with this string in URL.", nargs="+")
-parser.add_argument('-cn', '--cont', help="Skip threads that already have folders for them.", action="store_true")
+parser.add_argument('-cn', '--continue', help="Skip threads that already have folders for them.", dest="cont",
+                    action="store_true")
 parser.add_argument('-p', '--pdf', help="Print pages into PDF.", action="store_true")
 parser.add_argument('-ni', '--no-images', help="Don't download images.", action="store_true")
 parser.add_argument('-nv', '--no-videos', help="Don't download videos.", action="store_true")
@@ -23,16 +24,17 @@ headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) '
                   'Chrome/39.0.2171.95 Safari/537.36'}
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
-cookielist = []
+
 
 if args.pdf:
     import pdfkit
-    from http.cookies import SimpleCookie
-
-    cookie = SimpleCookie()
-    cookie.load(args.cookie)
-    for key, morsel in cookie.items():
-        cookielist.append((key, morsel.value))
+    cookielist = []
+    if args.cookie:
+        from http.cookies import SimpleCookie
+        cookie = SimpleCookie()
+        cookie.load(args.cookie)
+        for key, morsel in cookie.items():
+            cookielist.append((key, morsel.value))
 
 
 # Requests the URL and returns a BeautifulSoup object.
