@@ -12,7 +12,7 @@ parser.add_argument('-o', '--output', help="Optional download output location, m
 parser.add_argument('-nd', '--no-directories', help="Do not create directories for threads.", action="store_true")
 parser.add_argument('-e', '--external', help="Follow external files from links", action="store_true")
 parser.add_argument('-i', '--ignored', help="Ignore files with this string in URL.", nargs="+")
-parser.add_argument('-cn', '--continue', help="Skip threads that already have folders for them.", action="store_true")
+parser.add_argument('-cn', '--cont', help="Skip threads that already have folders for them.", action="store_true")
 parser.add_argument('-p', '--pdf', help="Print pages into PDF.", action="store_true")
 parser.add_argument('-ni', '--no-images', help="Don't download images.", action="store_true")
 parser.add_argument('-nv', '--no-videos', help="Don't download videos.", action="store_true")
@@ -237,7 +237,7 @@ def main():
         for threadcount, thread in enumerate(allthreads, start=1):
             # title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
             title = gettitle(thread)
-            if args.cn and os.path.exists(os.path.join(*getoutputpath(title))):
+            if args.cont and os.path.exists(os.path.join(*getoutputpath(title))):
                 print("Thread already exists, skipping:", title)
                 continue
             pages = getpages(thread)
