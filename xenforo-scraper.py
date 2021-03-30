@@ -237,7 +237,7 @@ def main():
         for threadcount, thread in enumerate(allthreads, start=1):
             # title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
             title = gettitle(thread)
-            if os.path.exists(os.path.join(*getoutputpath(title))):
+            if args.cn and os.path.exists(os.path.join(*getoutputpath(title))):
                 print("Thread already exists, skipping:", title)
                 continue
             pages = getpages(thread)
