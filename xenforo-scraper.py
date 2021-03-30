@@ -5,7 +5,6 @@ import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
-
 parser = argparse.ArgumentParser(description='Process scraper arguments.')
 parser.add_argument('url', help='URL to a single thread or a forum category.')
 parser.add_argument('-c', '--cookie', help="Optional cookie for the web request.")
@@ -14,17 +13,34 @@ parser.add_argument('-nd', '--no-directories', help="Do not create directories f
 parser.add_argument('-e', '--external', help="Follow external files from links", action="store_true")
 parser.add_argument('-i', '--ignored', help="Ignore files with this string in URL.", nargs="+")
 parser.add_argument('-cn', '--continue', help="Skip threads that already have folders for them.")
+parser.add_argument('-p', '--pdf', help="Print pages into PDF.", action="store_true")
+parser.add_argument('-ni', '--no-images', help="Don't download images.", action="store_true")
+parser.add_argument('-nv', '--no-videos', help="Don't download videos.", action="store_true")
 args = parser.parse_args()
 
 cookies = {'cookie': args.cookie}
-headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/39.0.2171.95 Safari/537.36'}
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
+cookielist = []
+
+if args.pdf:
+    import pdfkit
+    from http.cookies import SimpleCookie
+
+    cookie = SimpleCookie()
+    cookie.load(args.cookie)
+    for key, morsel in cookie.items():
+        cookielist.append((key, morsel.value))
 
 
 # Requests the URL and returns a BeautifulSoup object.
 def requestsite(url):
     try:
         response = requests.get(url, cookies=cookies, headers=headers, timeout=10)
+        if response.status_code != 200:
+            print("<{0}> Request Error: {1} - {2}".format(url, response.status_code, response.reason))
     except TimeoutError:
         print("Timed out Error.")
         pass
@@ -33,8 +49,6 @@ def requestsite(url):
         print(e)
         pass
 
-    if response.status_code != 200:
-        print("<{0}> Request Error: {1} - {2}".format(url, response.status_code, response.reason))
     soup = BeautifulSoup(response.content, 'html.parser')
     return soup
 
@@ -57,7 +71,7 @@ def getthreads(url):
         for element in y:
             link = element['href']
             if "/threads/" in link:
-                stripped = link[0:link.rfind('/')+1]
+                stripped = link[0:link.rfind('/') + 1]
                 if base_url + stripped not in threads:
                     threads.append(base_url + stripped)
     return threads
@@ -78,7 +92,7 @@ def getpages(url):
         maxpages = 1
 
     allpages = []
-    for x in range(1, int(maxpages)+1):
+    for x in range(1, int(maxpages) + 1):
         allpages.append("{0}page-{1}".format(url, x))
 
     return allpages
@@ -107,34 +121,36 @@ def scrapepage(url):
 
     soup = requestsite(url)
     base_url = '{uri.scheme}://{uri.netloc}'.format(uri=urlparse(url))
-
     title = gettitle(url)
+    path = os.path.join(*getoutputpath(title))
+    files = []
 
     # Embedded images
-    imgtags = soup.findAll("img")
-    files = []
-    for image in imgtags:
-        src = image.attrs['src']
-        if base_url + "/attachments/" in src and "/data/attachments/" not in src and src not in files:
-            if '.' in '{uri.path}'.format(uri=urlparse(src)):
+    if not args.no_images:
+        imgtags = soup.findAll("img")
+        for image in imgtags:
+            src = image.attrs['src']
+            if base_url + "/attachments/" in src and "/data/attachments/" not in src and src not in files:
+                if '.' in '{uri.path}'.format(uri=urlparse(src)):
+                    files.append(src)
+            if args.external and base_url not in src and src[0:4] == 'http' and src not in files:
                 files.append(src)
-        if args.external and base_url not in src and src[0:4] == 'http' and src not in files:
-            files.append(src)
-            #print("Found external image:", src)
+                # print("Found external image:", src)
 
     # Embedded videos
-    videotags = soup.findAll("video")
-    for video in videotags:
-        children = video.findChildren("source")
-        for node in children:
-            src = node.attrs['src']
-            if src[0:4] != 'http':
-                src = base_url + src
-            if base_url + "/data/video/" in src and src not in files:
-                files.append(src)
-            if args.external and base_url not in src:
-                files.append(src)
-                #print("Found external video:", src)
+    if not args.no_videos:
+        videotags = soup.findAll("video")
+        for video in videotags:
+            children = video.findChildren("source")
+            for node in children:
+                src = node.attrs['src']
+                if src[0:4] != 'http':
+                    src = base_url + src
+                if base_url + "/data/video/" in src and src not in files:
+                    files.append(src)
+                if args.external and base_url not in src:
+                    files.append(src)
+                    # print("Found external video:", src)
 
     # Attachment files
     # attachmenttags = soup.find_all(href=True)
@@ -145,8 +161,7 @@ def scrapepage(url):
     #     if base_url + "/attachments/" in src and "upload" not in src and src not in files:
     #         files.append(src)
 
-    if len(files) > 0:
-        path = os.path.join(*getoutputpath(title))
+    if len(files) > 0 or args.pdf:
         try:
             os.mkdir(path)
         except FileExistsError:
@@ -155,6 +170,10 @@ def scrapepage(url):
             print("\nOutput folder does not exist. Please create it manually.")
             print("Attempted output folder:", path)
             sys.exit(1)
+
+    if args.pdf:
+        pagenumber = url[url.rfind('page'):len(url)]
+        pdfkit.from_url(url, os.path.join(path, pagenumber + '.pdf'), options={'cookie': cookielist})
 
     for count, i in enumerate(files, start=1):
 
@@ -171,7 +190,7 @@ def scrapepage(url):
         # Remove last slash if it exists
         if i[-1] == '/':
             i = i[:-1]
-        filename = i[i.rfind('/')+1:len(i)]
+        filename = i[i.rfind('/') + 1:len(i)]
 
         if args.ignored is not None and isignored(filename):
             continue
@@ -202,7 +221,7 @@ def main():
     for each in matches:
         if each in args.url:
             try:
-                args.url = args.url[0:args.url.index('/', args.url.index(each)+len(each)) + 1]
+                args.url = args.url[0:args.url.index('/', args.url.index(each) + len(each)) + 1]
             except ValueError:
                 pass
 
@@ -216,7 +235,7 @@ def main():
             allthreads += getthreads(category)
         # Getting all threads from category pages
         for threadcount, thread in enumerate(allthreads, start=1):
-            #title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
+            # title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
             title = gettitle(thread)
             if os.path.exists(os.path.join(*getoutputpath(title))):
                 print("Thread already exists, skipping:", title)
