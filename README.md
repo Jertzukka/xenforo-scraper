@@ -1,5 +1,5 @@
 ## xenforo-scraper
-----
+
 Media scraper for XenForo-based forums written in Python. Supports downloading
 images and videos from single thread or from whole forum category. Includes
 basic support for printing threads into PDF with pdfkit from wkhtmltopdf.
