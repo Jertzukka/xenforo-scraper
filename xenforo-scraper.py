@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
@@ -10,7 +11,7 @@ parser.add_argument('url', help='URL to a single thread or a forum category.')
 parser.add_argument('-c', '--cookie', help="Optional cookie for the web request.")
 parser.add_argument('-o', '--output', help="Optional download output location, must exist.")
 parser.add_argument('-nd', '--no-directories', help="Do not create directories for threads.", action="store_true")
-parser.add_argument('-e', '--external', help="Follow external files from links", action="store_true")
+parser.add_argument('-e', '--external', help="Follow external files from links.", action="store_true")
 parser.add_argument('-i', '--ignored', help="Ignore files with this string in URL.", nargs="+")
 parser.add_argument('-cn', '--continue', help="Skip threads that already have folders for them.", dest="cont",
                     action="store_true")
@@ -24,6 +25,8 @@ headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) '
                   'Chrome/39.0.2171.95 Safari/537.36'}
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
+dl = 0
+starttime = 0
 
 
 if args.pdf:
@@ -42,12 +45,12 @@ def requestsite(url):
     try:
         response = requests.get(url, cookies=cookies, headers=headers, timeout=10)
         if response.status_code != 200:
-            print("<{0}> Request Error: {1} - {2}".format(url, response.status_code, response.reason))
+            print(f"<{url}> Request Error: {response.status_code} - {response.reason}")
     except TimeoutError:
         print("Timed out Error.")
         pass
     except Exception as e:
-        print("Error on {0}".format(url))
+        print(f"Error on {url}")
         print(e)
         pass
 
@@ -95,7 +98,7 @@ def getpages(url):
 
     allpages = []
     for x in range(1, int(maxpages) + 1):
-        allpages.append("{0}page-{1}".format(url, x))
+        allpages.append(f"{url}page-{x}")
 
     return allpages
 
@@ -132,10 +135,10 @@ def scrapepage(url):
         imgtags = soup.findAll("img")
         for image in imgtags:
             src = image.attrs['src']
-            if base_url + "/attachments/" in src and "/data/attachments/" not in src and src not in files:
+            if f"{base_url}/attachments" in src and "/data/attachments/" not in src and src not in files:
                 if '.' in '{uri.path}'.format(uri=urlparse(src)):
                     files.append(src)
-            if args.external and base_url not in src and src[0:4] == 'http' and src not in files:
+            if args.external and base_url not in src and src.startswith('http') and src not in files:
                 files.append(src)
                 # print("Found external image:", src)
 
@@ -146,9 +149,9 @@ def scrapepage(url):
             children = video.findChildren("source")
             for node in children:
                 src = node.attrs['src']
-                if src[0:4] != 'http':
+                if not src.startswith('http'):
                     src = base_url + src
-                if base_url + "/data/video/" in src and src not in files:
+                if f"{base_url}/data/video/" in src and src not in files:
                     files.append(src)
                 if args.external and base_url not in src:
                     files.append(src)
@@ -185,7 +188,7 @@ def scrapepage(url):
             print("Timed out Error.")
             pass
         except Exception as e:
-            print("Error on {0}".format(i))
+            print(f"Error on {i}")
             print(e)
             pass
 
@@ -201,7 +204,7 @@ def scrapepage(url):
         fullpath = os.path.join(*getoutputpath(title), truncated)
 
         if not os.path.exists(fullpath):
-            print("\x1b[KProgress: {0}/{1} - Downloading file {2}".format(count, len(files), truncated), end="\r")
+            print(f"\x1b[KProgress: {count}/{len(files)} - Downloading file {truncated}", end="\r")
             try:
                 open(fullpath, 'wb').write(file.content)
             except FileNotFoundError:
@@ -209,7 +212,7 @@ def scrapepage(url):
                 print("Attempted folder:", fullpath)
                 sys.exit(1)
         else:
-            print("\x1b[KProgress: {0}/{1} - Skipping {2}".format(count, len(files), truncated), end="\r")
+            print(f"\x1b[KProgress: {count}/{len(files)} - Skipping {truncated}", end="\r")
 
 
 # Handles arguments and running the other functions based on given input.
@@ -233,7 +236,7 @@ def main():
         pages = getpages(args.url)
         # Get all pages on category
         for precount, category in enumerate(pages, start=1):
-            print("\x1b[KGetting pages from category.. Current: {0}/{1}\r".format(precount, len(pages)))
+            print(f"\x1b[KGetting pages from category.. Current: {precount}/{len(pages)}\r")
             allthreads += getthreads(category)
         # Getting all threads from category pages
         for threadcount, thread in enumerate(allthreads, start=1):
@@ -244,9 +247,9 @@ def main():
                 continue
             pages = getpages(thread)
             # Getting all pages for all threads
-            print("\x1b[KThread: {0} - ({1}/{2})".format(title, threadcount, len(allthreads)))
+            print(f"\x1b[KThread: {title} - ({threadcount}/{len(allthreads)})")
             for pagecount, page in enumerate(pages, start=1):
-                print("\x1b[KProgress: Page {0}/{1}".format(pagecount, len(pages)), end="\r")
+                print(f"\x1b[KProgress: Page {pagecount}/{len(pages)}", end="\r")
                 scrapepage(page)
 
     # Input is just one thread, get pages and scrape it.
@@ -256,7 +259,7 @@ def main():
         # Getting pages all for this single thread.
         print("\x1b[KThread: {0}".format(title))
         for pagecount, page in enumerate(pages, start=1):
-            print("\x1b[KProgress: Page {0}/{1}".format(pagecount, len(pages)), end="\r")
+            print(f"\x1b[KProgress: Page {pagecount}/{len(pages)}", end="\r")
             scrapepage(args.url + "page-" + str(pagecount))
 
 
