@@ -21,9 +21,8 @@ parser.add_argument('-nv', '--no-videos', help="Don't download videos.", action=
 args = parser.parse_args()
 
 cookies = {'cookie': args.cookie}
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) '
-                  'Chrome/39.0.2171.95 Safari/537.36'}
+headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) '
+                         'Chrome/39.0.2171.95 Safari/537.36'}
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
 
 
@@ -73,7 +72,7 @@ def getthreads(url):
         y = x.find_all(href=True)
         for element in y:
             link = element['href']
-            if "/threads/" in link:
+            if "threads/" in link:
                 stripped = link[0:link.rfind('/') + 1]
                 if base_url + stripped not in threads:
                     threads.append(base_url + stripped)
@@ -81,9 +80,7 @@ def getthreads(url):
 
 
 # When given an URL, returns all pages for it, for example -page1, -page2, .. -page40 as an Array.
-def getpages(url):
-    soup = requestsite(url)
-
+def getpages(soup, url):
     pagetags = soup.select("li.pageNav-page")
     pagenumbers = []
     for button in pagetags:
@@ -97,12 +94,10 @@ def getpages(url):
     allpages = []
     for x in range(1, int(maxpages) + 1):
         allpages.append(f"{url}page-{x}")
-
     return allpages
 
 
-def gettitle(url):
-    soup = requestsite(url)
+def gettitle(soup):
     title = soup.find("h1", "p-title-value").text
     for char in badchars:
         title = title.replace(char, '_')
@@ -120,11 +115,9 @@ def getoutputpath(title):
 
 # Scrapes a single page, creating a folder and placing images into it.
 def scrapepage(url):
-    # print("Starting scrape on {0}".format(url))
-
     soup = requestsite(url)
     base_url = '{uri.scheme}://{uri.netloc}'.format(uri=urlparse(url))
-    title = gettitle(url)
+    title = gettitle(soup)
     path = os.path.join(*getoutputpath(title))
     files = []
 
@@ -133,12 +126,11 @@ def scrapepage(url):
         imgtags = soup.findAll("img")
         for image in imgtags:
             src = image.attrs['src']
-            if f"{base_url}/attachments" in src and "/data/attachments/" not in src and src not in files:
+            if base_url in src and "attachments/" in src and "data/attachments/" not in src and src not in files:
                 if '.' in '{uri.path}'.format(uri=urlparse(src)):
                     files.append(src)
             if args.external and base_url not in src and src.startswith('http') and src not in files:
                 files.append(src)
-                # print("Found external image:", src)
 
     # Embedded videos
     if not args.no_videos:
@@ -149,11 +141,10 @@ def scrapepage(url):
                 src = node.attrs['src']
                 if not src.startswith('http'):
                     src = base_url + src
-                if f"{base_url}/data/video/" in src and src not in files:
+                if base_url in src and "data/video/" in src and src not in files:
                     files.append(src)
                 if args.external and base_url not in src:
                     files.append(src)
-                    # print("Found external video:", src)
 
     # Attachment files
     # attachmenttags = soup.find_all(href=True)
@@ -180,16 +171,6 @@ def scrapepage(url):
 
     for count, i in enumerate(files, start=1):
 
-        try:
-            file = requests.get(i, cookies=cookies, headers=headers, timeout=10)
-        except TimeoutError:
-            print("Timed out Error.")
-            pass
-        except Exception as e:
-            print(f"Error on {i}")
-            print(e)
-            pass
-
         # Remove last slash if it exists
         if i[-1] == '/':
             i = i[:-1]
@@ -204,11 +185,16 @@ def scrapepage(url):
         if not os.path.exists(fullpath):
             print(f"\x1b[KProgress: {count}/{len(files)} - Downloading file {truncated}", end="\r")
             try:
+                file = requests.get(i, cookies=cookies, headers=headers, timeout=10)
                 open(fullpath, 'wb').write(file.content)
             except FileNotFoundError:
                 print("\nOutput folder does not exist. Please create it manually.")
                 print("Attempted folder:", fullpath)
                 sys.exit(1)
+            except Exception as e:
+                print(f"Error on {i}")
+                print(e)
+                pass
         else:
             print(f"\x1b[KProgress: {count}/{len(files)} - Skipping {truncated}", end="\r")
 
@@ -220,7 +206,7 @@ def main():
         args.url += '/'
 
     # Remove all extra parameters from the end such as page, post.
-    matches = ("/threads/", "/forums/")
+    matches = ("threads/", "forums/")
     for each in matches:
         if each in args.url:
             try:
@@ -229,21 +215,22 @@ def main():
                 pass
 
     # Input is a forum category, find all threads in this category and scrape them.
-    if "/forums/" in args.url:
+    if "forums/" in args.url:
         allthreads = []
-        pages = getpages(args.url)
+        pages = getpages(requestsite(args.url), args.url)
         # Get all pages on category
         for precount, category in enumerate(pages, start=1):
             print(f"\x1b[KGetting pages from category.. Current: {precount}/{len(pages)}\r")
             allthreads += getthreads(category)
         # Getting all threads from category pages
         for threadcount, thread in enumerate(allthreads, start=1):
-            # title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
-            title = gettitle(thread)
+            #title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
+            soup = requestsite(thread)
+            pages = getpages(soup, thread)
+            title = gettitle(soup)
             if args.cont and os.path.exists(os.path.join(*getoutputpath(title))):
-                print("Thread already exists, skipping:", title)
-                continue
-            pages = getpages(thread)
+                    print("Thread already exists, skipping:", title)
+                    continue
             # Getting all pages for all threads
             print(f"\x1b[KThread: {title} - ({threadcount}/{len(allthreads)})")
             for pagecount, page in enumerate(pages, start=1):
@@ -251,9 +238,11 @@ def main():
                 scrapepage(page)
 
     # Input is just one thread, get pages and scrape it.
-    if "/threads/" in args.url:
-        pages = getpages(args.url)
-        title = args.url[args.url.rfind('/', 0, args.url.rfind('/')) + 1:len(args.url)]
+    if "threads/" in args.url:
+        soup = requestsite(args.url)
+        pages = getpages(soup, args.url)
+        title = gettitle(soup)
+        # title = args.url[args.url.rfind('/', 0, args.url.rfind('/')) + 1:len(args.url)]
         # Getting pages all for this single thread.
         print("\x1b[KThread: {0}".format(title))
         for pagecount, page in enumerate(pages, start=1):
