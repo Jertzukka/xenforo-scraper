@@ -1,10 +1,11 @@
 import argparse
 import os
 import sys
-
+import time
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+from convert import shortToBytes, bytesToShort
 
 parser = argparse.ArgumentParser(description='Process scraper arguments.')
 parser.add_argument('url', help='URL to a single thread or a forum category.')
@@ -18,14 +19,28 @@ parser.add_argument('-cn', '--continue', help="Skip threads that already have fo
 parser.add_argument('-p', '--pdf', help="Print pages into PDF.", action="store_true")
 parser.add_argument('-ni', '--no-images', help="Don't download images.", action="store_true")
 parser.add_argument('-nv', '--no-videos', help="Don't download videos.", action="store_true")
+parser.add_argument('-max', '--max-filesize', help="Set maximum filesize for downloads.")
+parser.add_argument('-min', '--min-filesize', help="Set minimum filesize for downloads.")
+parser.add_argument('-d', '--debug', help=argparse.SUPPRESS, action="store_true")
 args = parser.parse_args()
 
 cookies = {'cookie': args.cookie}
 headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) '
                          'Chrome/39.0.2171.95 Safari/537.36'}
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
+totaldownloaded = 0
+timestamp = 0
 
 
+# Convert filesizes from shorthand to bytes if arguments are given.
+if args.max_filesize or args.min_filesize:
+    maxsize = shortToBytes(args.max_filesize)
+    minsize = shortToBytes(args.min_filesize)
+    if args.debug:
+        print(f"File sizes: Max: {bytesToShort(maxsize)}, Min: {bytesToShort(minsize)}")
+
+
+# Import and prepare cookies for PDF printing.
 if args.pdf:
     import pdfkit
     cookielist = []
@@ -39,6 +54,8 @@ if args.pdf:
 
 # Requests the URL and returns a BeautifulSoup object.
 def requestsite(url):
+    if args.debug:
+        print("Requesting URL:", url)
     try:
         response = requests.get(url, cookies=cookies, headers=headers, timeout=10)
         if response.status_code != 200:
@@ -50,11 +67,11 @@ def requestsite(url):
         print(f"Error on {url}")
         print(e)
         pass
-
     soup = BeautifulSoup(response.content, 'html.parser')
     return soup
 
 
+# Function for checking if filename includes any ignored words
 def isignored(filename):
     for name in args.ignored:
         if name in filename:
@@ -97,6 +114,7 @@ def getpages(soup, url):
     return allpages
 
 
+# Inputs a soup-object and returns the title of the thread
 def gettitle(soup):
     title = soup.find("h1", "p-title-value").text
     for char in badchars:
@@ -104,6 +122,7 @@ def gettitle(soup):
     return title
 
 
+# Inputs a title, and returns a path depending on given --output parameter and --no-directories.
 def getoutputpath(title):
     entrypath = []
     if args.output:
@@ -179,28 +198,41 @@ def scrapepage(url):
         if args.ignored is not None and isignored(filename):
             continue
 
-        truncated = (filename[:70] + '..') if len(filename) > 70 else filename
+        truncated = (filename[:60] + '..') if len(filename) > 60 else filename
         fullpath = os.path.join(*getoutputpath(title), truncated)
 
         if not os.path.exists(fullpath):
-            print(f"\x1b[KProgress: {count}/{len(files)} - Downloading file {truncated}", end="\r")
             try:
-                file = requests.get(i, cookies=cookies, headers=headers, timeout=10)
-                open(fullpath, 'wb').write(file.content)
-            except FileNotFoundError:
-                print("\nOutput folder does not exist. Please create it manually.")
-                print("Attempted folder:", fullpath)
-                sys.exit(1)
+                req = requests.get(i, stream=True, cookies=cookies, headers=headers, timeout=10)
+                filesize = int(req.headers['Content-length'])
+                if ((maxsize is not None and filesize <= maxsize) or maxsize is None) and (
+                        (minsize is not None and filesize >= minsize) or minsize is None):
+                    global totaldownloaded
+                    global timestamp
+                    difference = time.time() - timestamp
+                    print(
+                        f"\x1b[KSpeed: {bytesToShort(totaldownloaded / difference)}/s Progress: {count}/{len(files)}"
+                        f" - DL: {truncated} ({bytesToShort(filesize)})", end="\r")
+                    with open(fullpath, 'wb') as file:
+                        for chunk in req.iter_content(chunk_size=4096):
+                            file.write(chunk)
+                    totaldownloaded += filesize
+                else:
+                    print(
+                        f"\x1b[KProgress: {count}/{len(files)} - Wrong filesize {truncated} ({bytesToShort(filesize)})",
+                        end="\r")
+
             except Exception as e:
-                print(f"Error on {i}")
-                print(e)
+                if args.debug:
+                    print(f"Error on {i}, Reason {e}")
                 pass
         else:
             print(f"\x1b[KProgress: {count}/{len(files)} - Skipping {truncated}", end="\r")
 
 
-# Handles arguments and running the other functions based on given input.
+# Handles and launches other functions based on URL.
 def main():
+
     # Standardize URL to always end in /.
     if args.url[-1] != '/':
         args.url += '/'
@@ -218,21 +250,29 @@ def main():
     if "forums/" in args.url:
         allthreads = []
         pages = getpages(requestsite(args.url), args.url)
+
         # Get all pages on category
         for precount, category in enumerate(pages, start=1):
             print(f"\x1b[KGetting pages from category.. Current: {precount}/{len(pages)}\r")
             allthreads += getthreads(category)
+
         # Getting all threads from category pages
         for threadcount, thread in enumerate(allthreads, start=1):
-            #title = thread[thread.rfind('/', 0, thread.rfind('/'))+1:len(thread)]
             soup = requestsite(thread)
             pages = getpages(soup, thread)
             title = gettitle(soup)
+            truncated = (title[:75] + '..') if len(title) > 75 else title
+
+            global totaldownloaded
+            global timestamp
+            totaldownloaded = 0
+            timestamp = time.time()
             if args.cont and os.path.exists(os.path.join(*getoutputpath(title))):
-                    print("Thread already exists, skipping:", title)
+                    print("Thread already exists, skipping:", truncated)
                     continue
+            print(f"\x1b[KThread: {truncated} - ({threadcount}/{len(allthreads)})")
+
             # Getting all pages for all threads
-            print(f"\x1b[KThread: {title} - ({threadcount}/{len(allthreads)})")
             for pagecount, page in enumerate(pages, start=1):
                 print(f"\x1b[KProgress: Page {pagecount}/{len(pages)}", end="\r")
                 scrapepage(page)
@@ -242,7 +282,7 @@ def main():
         soup = requestsite(args.url)
         pages = getpages(soup, args.url)
         title = gettitle(soup)
-        # title = args.url[args.url.rfind('/', 0, args.url.rfind('/')) + 1:len(args.url)]
+
         # Getting pages all for this single thread.
         print("\x1b[KThread: {0}".format(title))
         for pagecount, page in enumerate(pages, start=1):
@@ -250,12 +290,11 @@ def main():
             scrapepage(args.url + "page-" + str(pagecount))
 
 
-if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nKeyboard interrupt, Exiting.")
-        sys.exit(1)
-    print("\nDone!")
-
+# Launch main function on file run and handle keyboard interrupt.
+try:
+    main()
+except KeyboardInterrupt:
+    print("\nKeyboard interrupt, Exiting.")
+    sys.exit(1)
+print("\nDone!")
 sys.exit(0)
