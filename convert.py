@@ -32,12 +32,16 @@ def bytesToShort(bytes):
 # Run tests only if file is ran as standalone.
 if __name__ == '__main__':
     # Tests
-    print(shortToBytes("103kib"))
-    print(shortToBytes("103GIB"))
-    print(shortToBytes("0.5TB"))
-    print(bytesToShort(105472))
-    print(bytesToShort(110595407872))
-    print(bytesToShort(500000000000))
-    print(bytesToShort("k2jfzsk2"))
-    print(shortToBytes("twjdaw"))
-    print(shortToBytes(25252))
+    import pytest
+    assert shortToBytes("103kib") == 105472
+    assert shortToBytes("103GIB") == 110595407872
+    assert shortToBytes("0.5TB") == 500000000000
+    assert bytesToShort(105472) == "105.47KB"
+    assert bytesToShort(110595407872) == "110.6GB"
+    assert bytesToShort(500000000000) == "500.0GB"
+    with pytest.raises(Exception):
+        print(bytesToShort("k2jfzsk2"))
+    with pytest.raises(Exception):
+        print(shortToBytes("ad2wd2"))
+    with pytest.raises(Exception):
+        print(shortToBytes(25252))
