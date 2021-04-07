@@ -38,6 +38,9 @@ if args.max_filesize or args.min_filesize:
     minsize = shortToBytes(args.min_filesize)
     if args.debug:
         print(f"File sizes: Max: {bytesToShort(maxsize)}, Min: {bytesToShort(minsize)}")
+else:
+    maxsize = None
+    minsize = None
 
 
 # Import and prepare cookies for PDF printing.
@@ -140,6 +143,8 @@ def scrapepage(url):
     path = os.path.join(*getoutputpath(title))
     files = []
 
+
+
     # Embedded images
     if not args.no_images:
         imgtags = soup.findAll("img")
@@ -160,19 +165,21 @@ def scrapepage(url):
                 src = node.attrs['src']
                 if not src.startswith('http'):
                     src = base_url + src
-                if base_url in src and "data/video/" in src and src not in files:
+                if base_url in src and "video/" in src and src not in files:
                     files.append(src)
                 if args.external and base_url not in src:
                     files.append(src)
 
-    # Attachment files
-    # attachmenttags = soup.find_all(href=True)
-    # for element in attachmenttags:
-    #     src = element['href']
-    #     if base_url not in src:
-    #         src = base_url + src
-    #     if base_url + "/attachments/" in src and "upload" not in src and src not in files:
-    #         files.append(src)
+    # Media
+    attachmenttags = soup.find_all(href=True)
+    for element in attachmenttags:
+        src = element['href']
+        fullimage = src + "full/"
+        if "media/" in src and base_url in src and fullimage not in files:
+            files.append(fullimage)
+
+    if args.debug:
+        print(files)
 
     if len(files) > 0 or args.pdf:
         try:
@@ -192,21 +199,32 @@ def scrapepage(url):
 
         # Remove last slash if it exists
         if i[-1] == '/':
-            i = i[:-1]
-        filename = i[i.rfind('/') + 1:len(i)]
+            filename = i[:-1]
+        else:
+            filename = i
+
+        # Remove /full ending
+        if filename.endswith("/full"):
+            filename = filename[:-5]
+
+        # Set everything after last / as filename
+        filename = filename[filename.rfind('/') + 1:len(filename)]
 
         if args.ignored is not None and isignored(filename):
             continue
 
         truncated = (filename[:60] + '..') if len(filename) > 60 else filename
-        fullpath = os.path.join(*getoutputpath(title), truncated)
+        fullpath = os.path.join(*getoutputpath(title), filename)
+
+        if args.debug:
+            print("Saving to:", fullpath)
 
         if not os.path.exists(fullpath):
             try:
                 req = requests.get(i, stream=True, cookies=cookies, headers=headers, timeout=10)
                 filesize = int(req.headers['Content-length'])
-                if ((maxsize is not None and filesize <= maxsize) or maxsize is None) and (
-                        (minsize is not None and filesize >= minsize) or minsize is None):
+                if (maxsize is None or (maxsize is not None and filesize <= maxsize)) and (
+                        minsize is None or (minsize is not None and filesize >= minsize)):
                     global totaldownloaded
                     global timestamp
                     difference = time.time() - timestamp
