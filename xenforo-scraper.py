@@ -199,9 +199,19 @@ def scrapepage(url):
             print("Attempted output folder:", path)
             sys.exit(1)
 
+    # Print page into PDF.
     if args.pdf:
         pagenumber = url[url.rfind('page'):len(url)]
-        pdfkit.from_url(url, os.path.join(path, pagenumber + '.pdf'), options={'cookie': cookielist})
+        pdfkit.from_url(url, os.path.join(path, pagenumber + '.pdf'), options={
+            'cookie': cookielist,
+            'margin-top': '0in',
+            'margin-right': '0in',
+            'margin-bottom': '0in',
+            'margin-left': '0in',
+            'page-height': '1000mm',
+            'page-width': '300mm',
+            'encoding': 'UTF-8'
+        })
 
     for count, i in enumerate(files, start=1):
 
