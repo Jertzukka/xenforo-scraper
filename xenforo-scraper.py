@@ -149,7 +149,12 @@ def scrapepage(url):
     if not args.no_images:
         imgtags = soup.findAll("img")
         for image in imgtags:
-            src = image.attrs['src']
+            if image.has_attr('src'):
+                src = image.attrs['src']
+            elif image.has_attr('data-src'):
+                src = image.attrs['data-src']
+            else:
+                continue
             if base_url in src and "attachments/" in src and "data/attachments/" not in src and src not in files:
                 if '.' in '{uri.path}'.format(uri=urlparse(src)):
                     files.append(src)
@@ -174,9 +179,12 @@ def scrapepage(url):
     attachmenttags = soup.find_all(href=True)
     for element in attachmenttags:
         src = element['href']
-        fullimage = src + "full/"
-        if "media/" in src and base_url in src and fullimage not in files:
-            files.append(fullimage)
+        if not src.startswith('http'):
+            src = base_url + src
+        if "media/" in src and src + "full/" not in files:
+            files.append(src + "full/")
+        if "/attachments/" in src and "/upload" not in src and src not in files:
+            files.append(src)
 
     if args.debug:
         print(files)
