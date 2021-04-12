@@ -35,10 +35,20 @@ basic support for printing threads into PDF with pdfkit from wkhtmltopdf.
       -ni, --no-images      Don't download images.
       -nv, --no-videos      Don't download videos.
 
+### Installation (Ubuntu)
+
+Required packages:
+
+    sudo apt-get install python3 python3-pip
+    pip3 install bs4
+
+Only needed if printing PDF:
+
+    sudo apt-get install wkhtmltopdf
+    pip3 install pdfkit
 
 ### Notes
 - Cookie is expected in format: `cookie1=value1; cookie2=value2`, which is
 available from browser developer tools.
-- Dependency `wkhtmltopdf` only required if PDF is printed. 
 - Filesizes supports both SI and IEC base units, ex. `2KB`, `5.2MiB`.
 - `--ignored` supports multiple arguments, leave it last.
