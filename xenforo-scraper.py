@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 import time
 import requests
@@ -30,7 +31,6 @@ headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleW
 badchars = (';', ':', '!', '*', '/', '\\', '?', '"', '<', '>', '|')
 totaldownloaded = 0
 timestamp = 0
-
 
 # Convert filesizes from shorthand to bytes if arguments are given.
 if args.max_filesize or args.min_filesize:
@@ -142,8 +142,7 @@ def scrapepage(url):
     title = gettitle(soup)
     path = os.path.join(*getoutputpath(title))
     files = []
-
-
+    global totaldownloaded, timestamp
 
     # Embedded images
     if not args.no_images:
@@ -213,61 +212,49 @@ def scrapepage(url):
             'encoding': 'UTF-8'
         })
 
+    # Handle download and saving of the files in files list.
     for count, i in enumerate(files, start=1):
 
-        # Remove last slash if it exists
-        if i[-1] == '/':
-            filename = i[:-1]
-        else:
-            filename = i
-
-        # Remove /full ending
-        if filename.endswith("/full"):
-            filename = filename[:-5]
-
-        # Set everything after last / as filename
-        filename = filename[filename.rfind('/') + 1:len(filename)]
+        try:
+            req = requests.get(i, stream=True, cookies=cookies, headers=headers, timeout=10)
+            filesize = int(req.headers['content-length'])
+            filename = re.findall("filename=\"(.+)\"", req.headers['content-disposition'])[0]
+            truncated = (filename[:60] + '..') if len(filename) > 60 else filename
+            fullpath = os.path.join(*getoutputpath(title), filename)
+        except Exception as e:
+            if args.debug:
+                print(f"Error on {i}, Reason {e}")
+            continue
 
         if args.ignored is not None and isignored(filename):
             continue
 
-        truncated = (filename[:60] + '..') if len(filename) > 60 else filename
-        fullpath = os.path.join(*getoutputpath(title), filename)
-
         if args.debug:
             print("Saving to:", fullpath)
 
-        if not os.path.exists(fullpath):
-            try:
-                req = requests.get(i, stream=True, cookies=cookies, headers=headers, timeout=10)
-                filesize = int(req.headers['Content-length'])
-                if (maxsize is None or (maxsize is not None and filesize <= maxsize)) and (
-                        minsize is None or (minsize is not None and filesize >= minsize)):
-                    global totaldownloaded
-                    global timestamp
-                    difference = time.time() - timestamp
-                    print(
-                        f"\x1b[KSpeed: {bytesToShort(totaldownloaded / difference)}/s Progress: {count}/{len(files)}"
-                        f" - DL: {truncated} ({bytesToShort(filesize)})", end="\r")
-                    with open(fullpath, 'wb') as file:
-                        for chunk in req.iter_content(chunk_size=4096):
-                            file.write(chunk)
-                    totaldownloaded += filesize
-                else:
-                    print(
-                        f"\x1b[KProgress: {count}/{len(files)} - Wrong filesize {truncated} ({bytesToShort(filesize)})",
-                        end="\r")
-
-            except Exception as e:
-                if args.debug:
-                    print(f"Error on {i}, Reason {e}")
-                pass
-        else:
+        if os.path.exists(fullpath):
             print(f"\x1b[KProgress: {count}/{len(files)} - Skipping {truncated}", end="\r")
+            continue
+
+        if (maxsize is None or (maxsize is not None and filesize <= maxsize)) and (
+                minsize is None or (minsize is not None and filesize >= minsize)):
+            difference = time.time() - timestamp
+            print(
+                f"\x1b[KSpeed: {bytesToShort(totaldownloaded / difference)}/s Progress: {count}/{len(files)}"
+                f" - DL: {truncated} ({bytesToShort(filesize)})", end="\r")
+            with open(fullpath, 'wb') as file:
+                for chunk in req.iter_content(chunk_size=4096):
+                    file.write(chunk)
+            totaldownloaded += filesize
+        else:
+            print(
+                f"\x1b[KProgress: {count}/{len(files)} - Wrong filesize {truncated} ({bytesToShort(filesize)})",
+                end="\r")
 
 
 # Handles and launches other functions based on URL.
 def main():
+    global totaldownloaded, timestamp
 
     # Standardize URL to always end in /.
     if args.url[-1] != '/':
@@ -298,11 +285,9 @@ def main():
             pages = getpages(soup, thread)
             title = gettitle(soup)
             truncated = (title[:75] + '..') if len(title) > 75 else title
-
-            global totaldownloaded
-            global timestamp
             totaldownloaded = 0
             timestamp = time.time()
+
             if args.cont and os.path.exists(os.path.join(*getoutputpath(title))):
                     print("Thread already exists, skipping:", truncated)
                     continue
@@ -318,6 +303,8 @@ def main():
         soup = requestsite(args.url)
         pages = getpages(soup, args.url)
         title = gettitle(soup)
+        totaldownloaded = 0
+        timestamp = time.time()
 
         # Getting pages all for this single thread.
         print("\x1b[KThread: {0}".format(title))
