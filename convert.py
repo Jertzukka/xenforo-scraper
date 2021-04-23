@@ -26,7 +26,8 @@ def bytesToShort(bytes):
             if bytes/multiplier > 1:
                 return str(round(bytes/multiplier, 2)) + format
         except TypeError:
-            raise Exception("Bytes must be an integer.")
+            return None
+            #raise Exception("Bytes must be an integer.")
 
 
 # Run tests only if file is ran as standalone.
