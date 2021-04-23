@@ -70,7 +70,7 @@ def requestsite(url):
         print(f"Error on {url}")
         print(e)
         pass
-    soup = BeautifulSoup(response.content, 'html.parser')
+    soup = BeautifulSoup(response.text, 'html.parser')
     return soup
 
 
@@ -182,7 +182,7 @@ def scrapepage(url):
             src = base_url + src
         if "media/" in src and src + "full/" not in files:
             files.append(src + "full/")
-        if "/attachments/" in src and "/upload" not in src and src not in files:
+        if "attachments/" in src and "/upload" not in src and src not in files:
             files.append(src)
 
     if args.debug:
